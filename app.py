@@ -2,58 +2,108 @@ import streamlit as st
 from openpyxl import load_workbook
 import xlwt
 import io
-from datetime import datetime
+import zipfile
 
-st.title("📈 Ekspor Data IPH - Komoditas Andil Terbesar")
+st.title("📊 Aplikasi Gabung Data Excel Harga IPH")
 
-uploaded_file = st.file_uploader("Upload File Excel (.xlsx)", type=["xlsx"])
+# Pilih tahun & bulan
+tahun = st.selectbox("Pilih Tahun", [2023, 2024, 2025], index=2, key="tahun")
+bulan = st.selectbox(
+    "Pilih Bulan",
+    ["Januari", "Februari", "Maret", "April", "Mei", "Juni",
+     "Juli", "Agustus", "September", "Oktober", "November", "Desember"],
+    index=0,
+    key="bulan"
+)
+map_bulan = {
+    "Januari": "01", "Februari": "02", "Maret": "03", "April": "04",
+    "Mei": "05", "Juni": "06", "Juli": "07", "Agustus": "08",
+    "September": "09", "Oktober": "10", "November": "11", "Desember": "12",
+}
+bulan_num = map_bulan[bulan]
 
-if uploaded_file:
-    try:
-        wb = load_workbook(uploaded_file, data_only=True)
-        sheet_names = wb.sheetnames
+uploaded_files = st.file_uploader("Upload file Excel (.xlsx)", type="xlsx", accept_multiple_files=True)
 
-        # Pilih sheet yang ingin digunakan
-        selected_sheet = st.selectbox("Pilih Sheet", sheet_names)
-        ws = wb[selected_sheet]
+if st.button("🔄 Proses & Unduh ZIP"):
+    semua_kab, semua_prov = [], []
+    header_kab, header_prov = [], []
 
-        data = []
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            if row[0] and any(row):  # hanya baris dengan data
-                selected = [row[i] if i < len(row) else None for i in [0, 1, 2, 3, 4]]
-                data.append(selected)
+    kolom_dihapus = [
+        "Upaya Pemda (Monev)",
+        "Saran Kepada Pemda",
+        "Disparitas Harga antar Daerah"
+    ]
 
-        if data:
-            # Tampilkan preview
-            st.subheader("📋 Preview Data")
-            st.dataframe(data, use_container_width=True)
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w") as zf:
+        for f in uploaded_files:
+            wb = load_workbook(f, data_only=True)
+            sheetnames = wb.sheetnames
 
-            # Buat file .xls
-            output_excel = io.BytesIO()
-            book = xlwt.Workbook()
-            sheet = book.add_sheet("IPH_Andil_Provinsi")
+            # Ambil sheet sesuai nama
+            sheet_kab = wb["360 KabKota"] if "360 KabKota" in sheetnames else None
+            sheet_prov = wb["Provinsi"] if "Provinsi" in sheetnames else None
 
-            headers = ["Provinsi", "Perubahan IPH", "Komoditas Andil Terbesar", "Nama Komoditas", "CV"]
-            for col, val in enumerate(headers):
-                sheet.write(0, col, val)
+            # Kabupaten
+            if sheet_kab:
+                rows = list(sheet_kab.iter_rows(values_only=True))
+                if not header_kab:
+                    header_kab = [cell for cell in rows[0]]
+                for row in rows[1:]:
+                    if row[0] and str(row[0]).startswith("18"):  # kode_kab
+                        semua_kab.append(list(row))
 
-            for row_idx, row in enumerate(data, start=1):
-                for col_idx, val in enumerate(row):
-                    sheet.write(row_idx, col_idx, val)
+            # Provinsi
+            if sheet_prov:
+                rows = list(sheet_prov.iter_rows(values_only=True))
+                if not header_prov:
+                    header_prov = [cell for cell in rows[0]]
+                for row in rows[1:]:
+                    if row[0]:
+                        semua_prov.append(list(row))
 
-            book.save(output_excel)
-            output_excel.seek(0)
+        # Buat XLS Gabungan Kabupaten
+        if semua_kab:
+            idx_simpan_kab = [i for i, h in enumerate(header_kab) if h not in kolom_dihapus]
+            header_kab_final = [header_kab[i] for i in idx_simpan_kab]
+            data_kab_final = [[row[i] for i in idx_simpan_kab] for row in semua_kab]
 
-            # Unduh file
-            st.success("✅ Data berhasil diekspor!")
-            st.download_button(
-                label="📥 Unduh Hasil (.xls)",
-                data=output_excel,
-                file_name=f"IPH_Andil_{datetime.today().strftime('%Y%m%d')}.xls",
-                mime="application/vnd.ms-excel"
-            )
-        else:
-            st.warning("❗ Tidak ada data ditemukan di sheet tersebut.")
+            bk = xlwt.Workbook()
+            sk = bk.add_sheet("Gabungan_Kabupaten")
+            for i, col in enumerate(header_kab_final):
+                sk.write(0, i, col)
+            for i, row in enumerate(data_kab_final, 1):
+                for j, val in enumerate(row):
+                    sk.write(i, j, val)
 
-    except Exception as e:
-        st.error(f"❌ Gagal membaca file: {e}")
+            buf = io.BytesIO()
+            bk.save(buf)
+            buf.seek(0)
+            zf.writestr(f"kabupaten_{bulan_num}_{tahun}.xls", buf.read())
+
+        # Buat XLS Gabungan Provinsi
+        if semua_prov:
+            idx_simpan_prov = [i for i, h in enumerate(header_prov) if h not in kolom_dihapus]
+            header_prov_final = [header_prov[i] for i in idx_simpan_prov]
+            data_prov_final = [[row[i] for i in idx_simpan_prov] for row in semua_prov]
+
+            bp = xlwt.Workbook()
+            sp = bp.add_sheet("Gabungan_Provinsi")
+            for i, col in enumerate(header_prov_final):
+                sp.write(0, i, col)
+            for i, row in enumerate(data_prov_final, 1):
+                for j, val in enumerate(row):
+                    sp.write(i, j, val)
+
+            buf = io.BytesIO()
+            bp.save(buf)
+            buf.seek(0)
+            zf.writestr(f"provinsi_{bulan_num}_{tahun}.xls", buf.read())
+
+    zip_buffer.seek(0)
+    st.download_button(
+        "📥 Unduh Gabungan IPH",
+        data=zip_buffer,
+        file_name=f"gabungan_IPH_{bulan_num}_{tahun}.zip",
+        mime="application/zip"
+    )
