@@ -2,95 +2,51 @@ import streamlit as st
 from openpyxl import load_workbook
 import xlwt
 import io
-import zipfile
 
-st.title("📊 Aplikasi Gabung Data Excel Harga IPH (Tanpa Filter Kolom)")
+st.title("📥 Ekspor Data IPH Tanpa Pivot")
 
-# Pilih tahun & bulan
-tahun = st.selectbox("Pilih Tahun", [2023, 2024, 2025], index=2, key="tahun")
-bulan = st.selectbox(
-    "Pilih Bulan",
-    ["Januari", "Februari", "Maret", "April", "Mei", "Juni",
-     "Juli", "Agustus", "September", "Oktober", "November", "Desember"],
-    index=0,
-    key="bulan"
-)
-map_bulan = {
-    "Januari": "01", "Februari": "02", "Maret": "03", "April": "04",
-    "Mei": "05", "Juni": "06", "Juli": "07", "Agustus": "08",
-    "September": "09", "Oktober": "10", "November": "11", "Desember": "12",
-}
-bulan_num = map_bulan[bulan]
+uploaded_file = st.file_uploader("Upload File Excel (.xlsx)", type=["xlsx"])
 
-uploaded_files = st.file_uploader("Upload file Excel (.xlsx)", type="xlsx", accept_multiple_files=True)
+if uploaded_file:
+    try:
+        wb = load_workbook(uploaded_file, data_only=True)
+        sheet_names = wb.sheetnames
 
-if st.button("🔄 Proses & Unduh ZIP"):
-    semua_kab, semua_prov = [], []
-    header_kab, header_prov = [], []
+        # Pilih sheet
+        selected_sheet = st.selectbox("Pilih Sheet", sheet_names)
+        ws = wb[selected_sheet]
 
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w") as zf:
-        for f in uploaded_files:
-            wb = load_workbook(f, data_only=True)
-            sheetnames = wb.sheetnames
+        # Ambil data semua baris dan kolom
+        data = list(ws.iter_rows(values_only=True))
+        header = data[0]
+        rows = data[1:]
 
-            # Ambil sheet sesuai nama
-            sheet_kab = wb["360 KabKota"] if "360 KabKota" in sheetnames else None
-            sheet_prov = wb["Provinsi"] if "Provinsi" in sheetnames else None
+        # Preview data di Streamlit
+        st.subheader("📊 Preview Data (tanpa pivot)")
+        st.dataframe(data)
 
-            # Kabupaten
-            if sheet_kab:
-                rows = list(sheet_kab.iter_rows(values_only=True))
-                if not header_kab:
-                    header_kab = [cell for cell in rows[0]]
-                for row in rows[1:]:
-                    if row[0] and str(row[0]).startswith("18"):  # kode_kab
-                        semua_kab.append(list(row))
+        # Ekspor ke .xls
+        output = io.BytesIO()
+        book = xlwt.Workbook()
+        sheet = book.add_sheet("Data_IPH")
 
-            # Provinsi
-            if sheet_prov:
-                rows = list(sheet_prov.iter_rows(values_only=True))
-                if not header_prov:
-                    header_prov = [cell for cell in rows[0]]
-                for row in rows[1:]:
-                    if row[0]:
-                        semua_prov.append(list(row))
+        for col_index, col_name in enumerate(header):
+            sheet.write(0, col_index, col_name)
 
-        # Tulis Gabungan Kabupaten
-        if semua_kab:
-            bk = xlwt.Workbook()
-            sk = bk.add_sheet("Gabungan_Kabupaten")
-            for i, col in enumerate(header_kab):
-                sk.write(0, i, col)
-            for i, row in enumerate(semua_kab, 1):
-                for j, val in enumerate(row):
-                    sk.write(i, j, val)
+        for row_index, row in enumerate(rows, start=1):
+            for col_index, value in enumerate(row):
+                sheet.write(row_index, col_index, value)
 
-            buf = io.BytesIO()
-            bk.save(buf)
-            buf.seek(0)
-            zf.writestr(f"kabupaten_{bulan_num}_{tahun}.xls", buf.read())
+        book.save(output)
+        output.seek(0)
 
-        # Tulis Gabungan Provinsi
-        if semua_prov:
-            bp = xlwt.Workbook()
-            sp = bp.add_sheet("Gabungan_Provinsi")
-            for i, col in enumerate(header_prov):
-                sp.write(0, i, col)
-            for i, row in enumerate(semua_prov, 1):
-                for j, val in enumerate(row):
-                    sp.write(i, j, val)
+        st.success("✅ Data berhasil diekspor tanpa pivot!")
+        st.download_button(
+            label="📥 Unduh Hasil (.xls)",
+            data=output,
+            file_name="IPH_Tanpa_Pivot.xls",
+            mime="application/vnd.ms-excel"
+        )
 
-            buf = io.BytesIO()
-            bp.save(buf)
-            buf.seek(0)
-            zf.writestr(f"provinsi_{bulan_num}_{tahun}.xls", buf.read())
-
-    zip_buffer.seek(0)
-    st.success("✅ Proses selesai!")
-    st.download_button(
-        "📥 Unduh Gabungan IPH",
-        data=zip_buffer,
-        file_name=f"gabungan_IPH_{bulan_num}_{tahun}.zip",
-        mime="application/zip"
-    )
+    except Exception as e:
+        st.error(f"❌ Gagal membaca file: {e}")
