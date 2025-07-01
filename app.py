@@ -4,7 +4,7 @@ import xlwt
 import io
 import zipfile
 
-st.title("📊 Aplikasi Gabung Data Excel Harga IPH (Tanpa Pivot)")
+st.title("📊 Aplikasi Gabung Data Excel Harga IPH (Tanpa Filter Kolom)")
 
 # Pilih tahun & bulan
 tahun = st.selectbox("Pilih Tahun", [2023, 2024, 2025], index=2, key="tahun")
@@ -15,7 +15,6 @@ bulan = st.selectbox(
     index=0,
     key="bulan"
 )
-
 map_bulan = {
     "Januari": "01", "Februari": "02", "Maret": "03", "April": "04",
     "Mei": "05", "Juni": "06", "Juli": "07", "Agustus": "08",
@@ -26,7 +25,6 @@ bulan_num = map_bulan[bulan]
 uploaded_files = st.file_uploader("Upload file Excel (.xlsx)", type="xlsx", accept_multiple_files=True)
 
 if st.button("🔄 Proses & Unduh ZIP"):
-
     semua_kab, semua_prov = [], []
     header_kab, header_prov = [], []
 
