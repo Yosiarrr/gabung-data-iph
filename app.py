@@ -33,7 +33,7 @@ def extract_minggu(filename):
     for i in range(1, 6):
         if f"M{i}" in filename.upper():
             return i
-    return None
+    return 0  # fallback default minggu ke-0 jika tidak ditemukan
 
 if st.button("Proses & Unduh .zip") and uploaded_files:
     semua_data_prov = []
@@ -46,7 +46,8 @@ if st.button("Proses & Unduh .zip") and uploaded_files:
     else:
         indeks_kolom = [0, 1, 2, 3, 4, 5]
 
-    for uploaded_file in uploaded_files:
+    progress = st.progress(0)
+    for idx_file, uploaded_file in enumerate(uploaded_files):
         try:
             wb = load_workbook(uploaded_file, data_only=True)
             nama_file = uploaded_file.name
@@ -70,6 +71,7 @@ if st.button("Proses & Unduh .zip") and uploaded_files:
 
         except Exception as e:
             st.error(f"❌ Gagal memproses file {uploaded_file.name}: {e}")
+        progress.progress((idx_file + 1) / len(uploaded_files))
 
     if semua_data_prov or semua_data_kab:
         zip_buffer = io.BytesIO()
